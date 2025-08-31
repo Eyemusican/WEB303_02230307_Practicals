@@ -1,0 +1,1 @@
+Hello, the completed practicals are contained within these folders
