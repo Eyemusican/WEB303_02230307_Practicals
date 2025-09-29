@@ -108,7 +108,7 @@ kubectl get services -n student-cafe
 
 #### 4. Kong Services Status
 
-![alt text](image-3.png)
+![practical4/assets/image-3.png](assets/image-3.png)
 
 
 
