@@ -1,0 +1,177 @@
+version: '3.8'
+
+services:
+  consul:
+    image: hashicorp/consul:latest
+    container_name: consul
+    ports:
+      - "8500:8500"
+      - "8600:8600/udp"
+    command: "agent -dev -client=0.0.0.0 -ui"
+    healthcheck:
+      test: ["CMD", "consul", "members"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  postgres:
+    image: postgres:13
+    container_name: student_cafe_postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: student_cafe
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  menu-db:
+    image: postgres:13
+    container_name: menu_service_postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: menu_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - menu_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  user-db:
+    image: postgres:13
+    container_name: user_service_postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: user_db
+    ports:
+      - "5434:5432"
+    volumes:
+      - user_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  order-db:
+    image: postgres:13
+    container_name: order_service_postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: order_db
+    ports:
+      - "5435:5432"
+    volumes:
+      - order_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  monolith:
+    build:
+      context: ./student-cafe-monolith
+      dockerfile: Dockerfile
+    container_name: student_cafe_monolith
+    ports:
+      - "8084:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: "host=postgres user=postgres password=postgres dbname=student_cafe port=5432 sslmode=disable"
+    restart: on-failure
+
+  menu-service:
+    build:
+      context: ./menu-service
+      dockerfile: Dockerfile
+    container_name: menu_service
+    ports:
+      - "8082:8082"
+    depends_on:
+      menu-db:
+        condition: service_healthy
+      consul:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: "host=menu-db user=postgres password=postgres dbname=menu_db port=5432 sslmode=disable"
+      PORT: "8082"
+      CONSUL_HTTP_ADDR: "consul:8500"
+    restart: on-failure
+
+  user-service:
+    build:
+      context: ./user-service
+      dockerfile: Dockerfile
+    container_name: user_service
+    ports:
+      - "8081:8081"
+    depends_on:
+      user-db:
+        condition: service_healthy
+      consul:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: "host=user-db user=postgres password=postgres dbname=user_db port=5432 sslmode=disable"
+      PORT: "8081"
+      CONSUL_HTTP_ADDR: "consul:8500"
+    restart: on-failure
+
+  order-service:
+    build:
+      context: ./order-service
+      dockerfile: Dockerfile
+    container_name: order_service
+    ports:
+      - "8083:8083"
+    depends_on:
+      order-db:
+        condition: service_healthy
+      user-service:
+        condition: service_started
+      menu-service:
+        condition: service_started
+      consul:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: "host=order-db user=postgres password=postgres dbname=order_db port=5432 sslmode=disable"
+      PORT: "8083"
+      CONSUL_HTTP_ADDR: "consul:8500"
+    restart: on-failure
+
+  api-gateway:
+    build:
+      context: ./api-gateway
+      dockerfile: Dockerfile
+    container_name: api_gateway
+    ports:
+      - "8080:8080"
+    depends_on:
+      - user-service
+      - menu-service
+      - order-service
+      - consul
+    environment:
+      CONSUL_HTTP_ADDR: "consul:8500"
+    restart: on-failure
+
+volumes:
+  postgres_data:
+  menu_data:
+  user_data:
+  order_data:
